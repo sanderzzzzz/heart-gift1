@@ -1,0 +1,560 @@
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ты красотка</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Базовый сброс для чистого полноэкранного чёрного холста */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        canvas {
+            position: fixed;
+            inset: 0;
+            display: block;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            touch-action: none;
+        }
+
+        /* Центральная надпись "ты красотка" в точности как фокус в видео */
+        .center-hero-text {
+            font-family: 'Cormorant Garamond', Georgia, serif;
+            color: #ffffff;
+            text-shadow:
+                0 0 14px rgba(255, 255, 255, 0.9),
+                0 0 28px rgba(255, 45, 85, 0.85),
+                0 0 52px rgba(220, 20, 60, 0.75),
+                0 2px 10px rgba(0, 0, 0, 0.95);
+            letter-spacing: 0.02em;
+            will-change: transform, opacity;
+        }
+    </style>
+</head>
+<body class="bg-black text-white antialiased">
+
+    <!-- Интерактивный холст с плотным облаком слов-комплиментов -->
+    <canvas id="heartCanvas"></canvas>
+
+    <!-- Центральный фокусный текст поверх сердцевины -->
+    <div class="fixed inset-0 z-10 flex items-center justify-center pointer-events-none px-4">
+        <h1 id="centerWord"
+            class="center-hero-text text-4xl sm:text-6xl md:text-7xl font-semibold text-center opacity-0 transition-opacity duration-700">
+            ты красотка
+        </h1>
+    </div>
+
+    <!-- Едва заметная подсказка в самом низу, не нарушающая чистый чёрный стиль -->
+    <div id="subtleHint"
+         class="fixed bottom-4 left-0 right-0 z-10 text-center pointer-events-none opacity-0 transition-opacity duration-1000">
+        <span class="text-[11px] tracking-[0.22em] uppercase text-rose-200/25 font-light">
+            нажми, чтобы повторить
+        </span>
+    </div>
+
+    <script>
+        window.onload = function () {
+            const canvas = document.getElementById('heartCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerWordEl = document.getElementById('centerWord');
+            const subtleHintEl = document.getElementById('subtleHint');
+
+            // Строго проверенный список тёплых комплиментов на русском языке
+            // Без слов о любви, без еды и без животных
+            const COMPLIMENT_WORDS = [
+                'ты красотка', 'ты нежная', 'заботливая', 'ты красивая',
+                'очаровательная', 'невероятная', 'милая', 'добрая',
+                'искренняя', 'прекрасная', 'восхитительная', 'особенная',
+                'чуткая', 'удивительная', 'яркая', 'неповторимая',
+                'лучезарная', 'тёплая', 'внимательная', 'потрясающая',
+                'идеальная', 'светлая', 'волшебная', 'шикарная',
+                'утончённая', 'притягательная', 'обаятельная', 'лучшая',
+                'необыкновенная', 'вдохновляющая', 'душевная', 'грациозная',
+                'гармоничная', 'безупречная'
+            ];
+
+            // Палитра насыщенных алых, малиновых, розово-красных и светло-коралловых оттенков как на видео
+            const CRIMSON_PALETTE = [
+                { color: '#ff1e42', glow: 'rgba(255, 30, 66, 0.75)', weight: 3 },   // Яркий кармин
+                { color: '#e11d48', glow: 'rgba(225, 29, 72, 0.70)', weight: 3 },   // Насыщенный малиновый
+                { color: '#ff3b5c', glow: 'rgba(255, 59, 92, 0.75)', weight: 3 },   // Светящийся алый
+                { color: '#be123c', glow: 'rgba(190, 18, 60, 0.55)', weight: 2 },   // Глубокий рубиновый (для объёма)
+                { color: '#9f1239', glow: 'rgba(159, 18, 57, 0.45)', weight: 2 },   // Тёмно-бордовый задний план
+                { color: '#fb7185', glow: 'rgba(251, 113, 133, 0.80)', weight: 2 }, // Нежный кораллово-розовый
+                { color: '#fda4af', glow: 'rgba(253, 164, 175, 0.85)', weight: 1 }, // Светлый розовый блик
+                { color: '#ffe4e6', glow: 'rgba(255, 228, 230, 0.90)', weight: 1 }  // Почти белый акцент
+            ];
+
+            // Разворачиваем взвешенную палитру для естественного распределения глубины цвета
+            const WEIGHTED_COLORS = [];
+            CRIMSON_PALETTE.forEach(item => {
+                for (let i = 0; i < item.weight; i++) {
+                    WEIGHTED_COLORS.push(item);
+                }
+            });
+
+            let width = 0;
+            let height = 0;
+            let dpr = 1;
+            let centerX = 0;
+            let centerY = 0;
+            let heartRadiusScale = 10;
+
+            let particles = [];
+            let sequenceStartTime = performance.now();
+            let hintShown = false;
+
+            // Состояние указателя для лёгкой интерактивной ряби
+            const pointer = {
+                x: -9999,
+                y: -9999,
+                active: false,
+                radius: 95
+            };
+
+            // Настройка размеров холста под любое устройство (телефон, планшет, ПК)
+            function resizeCanvas() {
+                dpr = Math.min(window.devicePixelRatio || 1, 2);
+                width = window.innerWidth;
+                height = window.innerHeight;
+
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                centerX = width / 2;
+                centerY = height / 2;
+
+                // Масштаб сердца так, чтобы оно крупно и красиво занимало центр экрана
+                const minSide = Math.min(width * 0.92, height * 0.84);
+                heartRadiusScale = minSide / 33;
+                pointer.radius = Math.max(75, Math.min(130, width * 0.16));
+
+                // Пересчитываем целевые позиции всех слов при изменении размера окна
+                particles.forEach(p => p.updateTargetPosition());
+            }
+
+            // Проверка попадания нормализованной точки (nx, ny) внутрь классического силуэта сердца
+            // Уравнение: (x^2 + y^2 - 1)^3 - x^2 * y^3 <= 0 (с инверсией Y для экранных координат)
+            function isInsideHeartImplicit(nx, ny) {
+                const yUp = -ny;
+                const x2 = nx * nx;
+                const y2 = yUp * yUp;
+                const a = x2 + y2 - 1;
+                return (a * a * a - x2 * yUp * y2) <= 0;
+            }
+
+            // Точная параметрическая точка на контуре сердца
+            function getHeartContourPoint(t, scale) {
+                const x = 16 * Math.pow(Math.sin(t), 3);
+                const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                return {
+                    x: x * scale,
+                    y: y * scale
+                };
+            }
+
+            // Генерация плотного набора точек, заполняющих весь объём сердца (контур + внутреннее облако)
+            function generateDenseHeartLayout(totalCount) {
+                const points = [];
+
+                // 1. Чёткий внешний контур (около 28% слов), чтобы форма сердца читалась идеально ровно
+                const contourCount = Math.floor(totalCount * 0.28);
+                for (let i = 0; i < contourCount; i++) {
+                    const t = (i / contourCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.03;
+                    const pt = getHeartContourPoint(t, 1.0);
+                    // Переводим в нормализованные координаты относительно heartRadiusScale
+                    points.push({
+                        rx: pt.x,
+                        ry: pt.y,
+                        isEdge: true,
+                        distRatio: 1.0
+                    });
+                }
+
+                // 2. Плотное равномерно-органическое заполнение всей внутренней площади сердца
+                const interiorTarget = totalCount - contourCount;
+                let attempts = 0;
+                const maxAttempts = interiorTarget * 40;
+
+                // Сетка с джиттером для равномерной плотности без слипания и пустых дыр
+                const cols = Math.ceil(Math.sqrt(interiorTarget * 1.4));
+                const rows = Math.ceil(Math.sqrt(interiorTarget * 1.4));
+
+                for (let r = 0; r < rows && points.length < totalCount; r++) {
+                    for (let c = 0; c < cols && points.length < totalCount; c++) {
+                        // Случайное смещение внутри ячейки сетки
+                        const u = (c + 0.15 + Math.random() * 0.7) / cols;
+                        const v = (r + 0.15 + Math.random() * 0.7) / rows;
+
+                        // Диапазон нормализованного сердца: x in [-1.18, 1.18], y in [-1.25, 1.05]
+                        const nx = (u * 2.36) - 1.18;
+                        const ny = (v * 2.32) - 1.25;
+
+                        if (isInsideHeartImplicit(nx * 1.04, ny * 1.04)) {
+                            // Переводим в единицы параметрического сердца (примерный коэффициент 14.2)
+                            const rx = nx * 14.3;
+                            const ry = (ny + 0.12) * 14.3;
+                            const distFromCenter = Math.hypot(nx, ny + 0.1);
+
+                            points.push({
+                                rx: rx,
+                                ry: ry,
+                                isEdge: false,
+                                distRatio: Math.min(1, distFromCenter)
+                            });
+                        }
+                    }
+                }
+
+                // Добираем недостающие точки методом случайного сэмплирования внутри сердца
+                while (points.length < totalCount && attempts < maxAttempts) {
+                    attempts++;
+                    const nx = (Math.random() * 2.32) - 1.16;
+                    const ny = (Math.random() * 2.28) - 1.22;
+                    if (isInsideHeartImplicit(nx * 1.03, ny * 1.03)) {
+                        const rx = nx * 14.3;
+                        const ry = (ny + 0.12) * 14.3;
+                        const distFromCenter = Math.hypot(nx, ny + 0.1);
+                        points.push({
+                            rx: rx,
+                            ry: ry,
+                            isEdge: false,
+                            distRatio: Math.min(1, distFromCenter)
+                        });
+                    }
+                }
+
+                // Сортируем от центра к краям, чтобы волна распускания шла красиво изнутри наружу
+                points.sort((a, b) => a.distRatio - b.distRatio);
+                return points;
+            }
+
+            // Класс отдельного слова в облаке сердца
+            class ComplimentWordParticle {
+                constructor(index, layoutPoint) {
+                    this.index = index;
+                    this.layout = layoutPoint;
+                    this.text = COMPLIMENT_WORDS[index % COMPLIMENT_WORDS.length];
+
+                    // Подбор цвета и глубины: ближе к центру — чуть ярче и светлее, по краям — насыщенный кармин
+                    const paletteItem = WEIGHTED_COLORS[Math.floor(Math.random() * WEIGHTED_COLORS.length)];
+                    this.color = paletteItem.color;
+                    this.glow = paletteItem.glow;
+
+                    // Разнообразие размеров шрифта создаёт эффект 3D-глубины как на видео
+                    const sizeRoll = Math.random();
+                    if (layoutPoint.isEdge) {
+                        this.baseFontSize = 9.5 + Math.random() * 3.5;
+                    } else if (sizeRoll > 0.84) {
+                        this.baseFontSize = 13.5 + Math.random() * 3.5; // Крупные акцентные слова
+                    } else if (sizeRoll > 0.4) {
+                        this.baseFontSize = 10.5 + Math.random() * 2.5; // Средний слой
+                    } else {
+                        this.baseFontSize = 8.2 + Math.random() * 2.0;  // Мелкий фоновый слой
+                    }
+
+                    this.baseAlpha = layoutPoint.isEdge
+                        ? (0.85 + Math.random() * 0.15)
+                        : (0.65 + Math.random() * 0.35);
+
+                    // Начальная позиция — строго в центре (за надписью "ты красотка")
+                    this.x = centerX;
+                    this.y = centerY;
+                    this.vx = 0;
+                    this.vy = 0;
+
+                    this.targetOffsetX = 0;
+                    this.targetOffsetY = 0;
+                    this.updateTargetPosition();
+
+                    // Индивидуальная задержка вылета из центра (волна распускания)
+                    this.bloomDelay = layoutPoint.distRatio * 0.48 + Math.random() * 0.18;
+
+                    // Лёгкое органическое покачивание на месте
+                    this.floatPhase = Math.random() * Math.PI * 2;
+                    this.floatSpeed = 0.014 + Math.random() * 0.018;
+                    this.floatAmpX = 1.0 + Math.random() * 2.2;
+                    this.floatAmpY = 1.0 + Math.random() * 2.2;
+
+                    // Едва заметный наклон некоторых слов для живости облака
+                    this.tilt = (Math.random() - 0.5) * 0.08;
+                }
+
+                updateTargetPosition() {
+                    this.targetOffsetX = this.layout.rx * heartRadiusScale;
+                    this.targetOffsetY = this.layout.ry * heartRadiusScale;
+                }
+
+                resetToCenter() {
+                    this.x = centerX + (Math.random() - 0.5) * 14;
+                    this.y = centerY + (Math.random() - 0.5) * 14;
+                    this.vx = 0;
+                    this.vy = 0;
+                }
+
+                update(bloomElapsed, beatScale) {
+                    // До начала фазы раскрытия (первые ~1.85 сек) слова ждут в центре
+                    if (bloomElapsed < this.bloomDelay) {
+                        this.x = centerX;
+                        this.y = centerY;
+                        return 0;
+                    }
+
+                    // Плавное нарастание прозрачности и масштаба при вылете из центра
+                    const localTime = bloomElapsed - this.bloomDelay;
+                    const appearProgress = Math.min(1, localTime / 0.55);
+                    const easeOut = 1 - Math.pow(1 - appearProgress, 3);
+
+                    this.floatPhase += this.floatSpeed;
+                    const microX = Math.cos(this.floatPhase) * this.floatAmpX;
+                    const microY = Math.sin(this.floatPhase * 1.15) * this.floatAmpY;
+
+                    // Целевая точка с учётом дыхания / сердцебиения
+                    const destX = centerX + this.targetOffsetX * beatScale + microX;
+                    const destY = centerY + this.targetOffsetY * beatScale + microY;
+
+                    // Пружинное притяжение к своей позиции в сердце
+                    const spring = localTime < 0.9 ? 0.068 : 0.055;
+                    this.vx += (destX - this.x) * spring;
+                    this.vy += (destY - this.y) * spring;
+
+                    // Мягкая реакция на движение пальца или мыши
+                    if (pointer.active) {
+                        const dx = this.x - pointer.x;
+                        const dy = this.y - pointer.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < pointer.radius && dist > 0.1) {
+                            const force = Math.pow(1 - dist / pointer.radius, 2) * 5.2;
+                            this.vx += (dx / dist) * force;
+                            this.vy += (dy / dist) * force;
+                        }
+                    }
+
+                    this.vx *= 0.82;
+                    this.vy *= 0.82;
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    return easeOut;
+                }
+
+                draw(ctx, visibility, beatScale) {
+                    if (visibility <= 0.01) return;
+
+                    // Адаптивный размер шрифта под ширину экрана
+                    const screenFactor = Math.max(0.62, Math.min(1.18, Math.min(width, height) / 760));
+                    const fontSize = (this.baseFontSize * screenFactor * (0.65 + 0.35 * visibility) * (0.96 + 0.04 * beatScale)).toFixed(1);
+
+                    // Если слово находится прямо под центральной надписью "ты красотка",
+                    // делаем его чуть прозрачнее, чтобы главный белый текст читался кристально чисто
+                    const dxCenter = Math.abs(this.x - centerX);
+                    const dyCenter = Math.abs(this.y - centerY);
+                    const centerMaskX = Math.max(95, Math.min(185, width * 0.22));
+                    const centerMaskY = Math.max(24, Math.min(44, height * 0.055));
+
+                    let centerDim = 1.0;
+                    if (dxCenter < centerMaskX && dyCenter < centerMaskY) {
+                        const normDist = Math.hypot(dxCenter / centerMaskX, dyCenter / centerMaskY);
+                        if (normDist < 1) {
+                            centerDim = 0.28 + 0.72 * normDist;
+                        }
+                    }
+
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    if (Math.abs(this.tilt) > 0.01) {
+                        ctx.rotate(this.tilt);
+                    }
+
+                    ctx.font = `500 ${fontSize}px 'Montserrat', sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    // Лёгкое неоновое свечение для ярких слов
+                    if (this.baseFontSize > 11.5) {
+                        ctx.shadowColor = this.glow;
+                        ctx.shadowBlur = 9;
+                    }
+
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = this.baseAlpha * visibility * centerDim;
+                    ctx.fillText(this.text, 0, 0);
+                    ctx.restore();
+                }
+            }
+
+            // Инициализация плотного облака слов
+            function initHeartWords() {
+                const isMobile = window.innerWidth < 640;
+                // Оптимальное количество слов для плотного заполнения сердца без потери 60 FPS
+                const totalWords = isMobile ? 250 : 370;
+                const layoutPoints = generateDenseHeartLayout(totalWords);
+
+                particles = layoutPoints.map((pt, idx) => new ComplimentWordParticle(idx, pt));
+            }
+
+            // Запуск или перезапуск всей сцены с самого начала (как в видео)
+            function startSequence() {
+                sequenceStartTime = performance.now();
+                centerWordEl.style.opacity = '0';
+                centerWordEl.style.transform = 'scale(0.94)';
+                particles.forEach(p => p.resetToCenter());
+            }
+
+            // Отрисовка мягкого малиново-красного радиального свечения в центре чёрного экрана
+            function drawCenterRadialGlow(elapsed, beatScale) {
+                // Плавное появление свечения с 0.15с до 1.4с
+                const fadeIn = Math.min(1, Math.max(0, (elapsed - 0.15) / 1.25));
+                if (fadeIn <= 0) return;
+
+                // Когда сердце раскрывается (после 1.85с), ореол расширяется под размер всего сердца
+                const bloomProgress = Math.min(1, Math.max(0, (elapsed - 1.85) / 1.2));
+                const easeBloom = 1 - Math.pow(1 - bloomProgress, 3);
+
+                const baseRadius = Math.min(width, height) * 0.24;
+                const fullHeartRadius = heartRadiusScale * 18.5 * beatScale;
+                const glowRadius = baseRadius + (fullHeartRadius - baseRadius) * easeBloom;
+
+                const gradient = ctx.createRadialGradient(
+                    centerX, centerY, glowRadius * 0.04,
+                    centerX, centerY, glowRadius
+                );
+
+                const coreAlpha = (0.34 - 0.10 * easeBloom) * fadeIn;
+                const midAlpha = (0.16 + 0.04 * easeBloom) * fadeIn;
+
+                gradient.addColorStop(0, `rgba(225, 29, 72, ${coreAlpha.toFixed(3)})`);
+                gradient.addColorStop(0.45, `rgba(159, 18, 57, ${midAlpha.toFixed(3)})`);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                ctx.save();
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Главный цикл рендеринга (60 FPS)
+            function animate(now) {
+                const elapsed = (now - sequenceStartTime) * 0.001;
+
+                // Чистый чёрный фон #000000
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, width, height);
+
+                // Этап 1 (0.45с — 1.4с): Плавное появление надписи "ты красотка" в центре
+                if (elapsed >= 0.45) {
+                    const textFade = Math.min(1, (elapsed - 0.45) / 0.85);
+                    centerWordEl.style.opacity = textFade.toFixed(3);
+                }
+
+                // Мягкий ритм сердцебиения после раскрытия сердца
+                const bloomStart = 1.85;
+                const bloomElapsed = Math.max(0, elapsed - bloomStart);
+
+                let beatPulse = 0;
+                if (bloomElapsed > 0.6) {
+                    const beatTime = (bloomElapsed - 0.6) * 1.15;
+                    const cycle = beatTime % 1;
+                    // Двойной мягкий удар сердца (тук-тук)
+                    if (cycle < 0.16) {
+                        beatPulse = Math.sin((cycle / 0.16) * Math.PI) * 0.048;
+                    } else if (cycle > 0.24 && cycle < 0.40) {
+                        beatPulse = Math.sin(((cycle - 0.24) / 0.16) * Math.PI) * 0.028;
+                    }
+                }
+                const beatScale = 1 + beatPulse;
+
+                // Синхронизируем лёгкое дыхание центральной надписи "ты красотка" с сердцем
+                const textScale = 0.94 + 0.06 * Math.min(1, Math.max(0, (elapsed - 0.45) / 0.9)) + beatPulse * 0.55;
+                centerWordEl.style.transform = `scale(${textScale.toFixed(4)})`;
+
+                // 1. Фоновое радиальное малиновое свечение
+                drawCenterRadialGlow(elapsed, beatScale);
+
+                // 2. Этап 2 (с 1.85с): Взрывное распускание слов из центра в форму плотного сердца
+                if (bloomElapsed > 0) {
+                    for (let i = 0; i < particles.length; i++) {
+                        const p = particles[i];
+                        const vis = p.update(bloomElapsed, beatScale);
+                        p.draw(ctx, vis, beatScale);
+                    }
+                }
+
+                // Показываем едва заметную подсказку через 5 секунд
+                if (!hintShown && elapsed > 5.0) {
+                    hintShown = true;
+                    subtleHintEl.style.opacity = '1';
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            // Интерактивность: рябь при движении пальца/курсора и повтор анимации при клике/тапе
+            let pointerDownPos = { x: 0, y: 0 };
+
+            canvas.addEventListener('pointermove', (e) => {
+                pointer.x = e.clientX;
+                pointer.y = e.clientY;
+                pointer.active = true;
+            });
+
+            canvas.addEventListener('pointerdown', (e) => {
+                pointer.x = e.clientX;
+                pointer.y = e.clientY;
+                pointer.active = true;
+                pointerDownPos = { x: e.clientX, y: e.clientY };
+            });
+
+            canvas.addEventListener('pointerup', (e) => {
+                pointer.active = false;
+                const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+                // Если это был короткий тап/клик (а не свайп), перезапускаем распускание из центра
+                if (moveDist < 12) {
+                    startSequence();
+                }
+            });
+
+            canvas.addEventListener('pointerleave', () => {
+                pointer.active = false;
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+
+            // Инициализация и старт
+            resizeCanvas();
+            initHeartWords();
+            startSequence();
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
+```
